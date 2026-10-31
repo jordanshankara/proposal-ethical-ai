@@ -1,0 +1,36 @@
+name: Build PDF
+
+on:
+  push:
+    paths: ["src/**", "assets/**", "fonts/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Generate HTML and render PDF (A4, 2 pages)
+        run: |
+          export CHROME_PATH="$(which google-chrome || which chromium-browser || which chromium)"
+          python src/gen3.py
+          sed -i 's/class="pg"/class="pg page"/g' build/proposal.html
+          python tools/render.py build/proposal.html --size 210x297mm --dpi 150 --out output/Proposal --formats pdf --multipage
+          python -c "import pymupdf; n=len(pymupdf.open('output/Proposal.pdf')); assert n==2, f'PDF has {n} pages, expected 2'"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Proposal-PDF
+          path: output/Proposal.pdf
+      - name: Commit PDF back to the repo
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add output/Proposal.pdf
+          git diff --staged --quiet || git commit -m "Build PDF [skip ci]" && git push
